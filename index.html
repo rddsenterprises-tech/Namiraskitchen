@@ -348,6 +348,9 @@
                     <i class="fas fa-times text-lg"></i>
                 </button>
             </div>
+            <div id="adminSetupNotice" class="hidden p-4 text-sm text-amber-200">
+                <p>Firebase is not configured yet. Add your new Firebase web app config, enable Email/Password sign-in, and create an administrator account to enable product management.</p>
+            </div>
             <form id="adminLoginPanel" onsubmit="adminSignIn(event)" class="hidden p-4 overflow-y-auto space-y-4">
                 <p class="text-sm text-gray-300">Sign in with your administrator account to update products in the shared menu.</p>
                 <div>
@@ -412,8 +415,8 @@
             appId: "YOUR_APP_ID"
         };
         const cloudConfigured = !Object.values(firebaseConfig).some(value => value.includes('YOUR_'));
-        // Admin UI is available only on a host such as admin.example.com.
-        const isAdminHost = window.location.hostname.toLowerCase().split('.')[0] === 'admin';
+        // The admin entry is available on the storefront; Firebase authentication protects access.
+        const isAdminHost = true;
         let firebaseAuth = null;
         let productsDb = null;
         let adminUser = null;
@@ -569,6 +572,7 @@
             const loginPanel = document.getElementById('adminLoginPanel');
             const productForm = document.getElementById('adminProductForm');
             const cloudControls = document.getElementById('adminCloudControls');
+            const setupNotice = document.getElementById('adminSetupNotice');
             document.getElementById('adminPanelButton').classList.toggle('hidden', !isAdminHost);
             if (!isAdminHost) {
                 loginPanel.classList.add('hidden');
@@ -578,11 +582,13 @@
                 return;
             }
             if (!cloudConfigured) {
+                setupNotice.classList.remove('hidden');
                 loginPanel.classList.add('hidden');
-                productForm.classList.remove('hidden');
+                productForm.classList.add('hidden');
                 cloudControls.classList.add('hidden');
                 return;
             }
+            setupNotice.classList.add('hidden');
             loginPanel.classList.toggle('hidden', Boolean(adminUser));
             productForm.classList.toggle('hidden', !adminUser);
             cloudControls.classList.toggle('hidden', !adminUser);
@@ -640,7 +646,6 @@
 
         // Initialize App
         window.onload = function() {
-            loadSavedProducts();
             renderCategoryPills();
             renderMenu();
             initializeCloudSync();
@@ -759,8 +764,8 @@
                 status.classList.remove('hidden');
                 return;
             }
-            if (cloudConfigured && !adminUser) {
-                status.textContent = 'Sign in as an administrator before saving cloud changes.';
+            if (!cloudConfigured || !productsDb || !adminUser) {
+                status.textContent = 'Firebase must be configured and you must be signed in as an administrator before saving.';
                 status.classList.remove('hidden');
                 return;
             }
@@ -768,24 +773,7 @@
             const updatedProduct = { name, desc, price };
             if (adminImageData) updatedProduct.image = adminImageData;
             try {
-                if (cloudConfigured) {
-                    await productsDb.collection('products').doc(String(item.id)).set(updatedProduct, { merge: true });
-                } else {
-                    item.name = name;
-                    item.desc = desc;
-                    item.price = price;
-                    if (adminImageData) item.image = adminImageData;
-                    const savedProducts = {};
-                    menuData.forEach(category => category.items.forEach(product => {
-                        savedProducts[product.id] = {
-                            name: product.name,
-                            desc: product.desc,
-                            price: product.price,
-                            image: product.image
-                        };
-                    }));
-                    localStorage.setItem('namiraKitchenProducts', JSON.stringify(savedProducts));
-                }
+                await productsDb.collection('products').doc(String(item.id)).set(updatedProduct, { merge: true });
             } catch (error) {
                 status.textContent = 'Could not save to the cloud. Check your connection and image size.';
                 status.classList.remove('hidden');
@@ -795,7 +783,7 @@
             Object.assign(item, updatedProduct);
             renderMenu();
             renderCategoryPills();
-            status.textContent = cloudConfigured ? 'Product saved. Customers will see the shared menu.' : 'Product saved in this browser only. Add Firebase config for cloud sharing.';
+            status.textContent = 'Product saved. Customers will see the shared menu.';
             status.classList.remove('hidden');
             adminImageData = null;
         }
