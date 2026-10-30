@@ -415,8 +415,8 @@
             appId: "YOUR_APP_ID"
         };
         const cloudConfigured = !Object.values(firebaseConfig).some(value => value.includes('YOUR_'));
-        // The admin entry is available on the storefront; Firebase authentication protects access.
-        const isAdminHost = true;
+        // Show the admin entry only when the URL contains an /admin path or ?admin marker.
+        const isAdminHost = /(?:^|[/?#&])admin(?:[/?#=&]|$)/i.test(window.location.href);
         let firebaseAuth = null;
         let productsDb = null;
         let adminUser = null;
