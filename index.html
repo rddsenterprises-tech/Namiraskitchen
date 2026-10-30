@@ -582,9 +582,10 @@
                 return;
             }
             if (!cloudConfigured) {
+                setupNotice.textContent = 'Firebase is not configured. You can still edit products here; changes will be saved only in this browser and will not appear for other customers.';
                 setupNotice.classList.remove('hidden');
                 loginPanel.classList.add('hidden');
-                productForm.classList.add('hidden');
+                productForm.classList.remove('hidden');
                 cloudControls.classList.add('hidden');
                 return;
             }
@@ -646,6 +647,7 @@
 
         // Initialize App
         window.onload = function() {
+            loadSavedProducts();
             renderCategoryPills();
             renderMenu();
             initializeCloudSync();
