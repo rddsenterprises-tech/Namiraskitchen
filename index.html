@@ -111,24 +111,45 @@
             height: 12rem;
             position: relative;
             overflow: hidden;
+            isolation: isolate;
             background: linear-gradient(135deg, #26231b, #0b0b09);
         }
         .product-image-frame::after {
             content: '';
             position: absolute;
             inset: 45% 0 0;
-            background: linear-gradient(transparent, rgba(0, 0, 0, 0.28));
+            z-index: 1;
+            background: linear-gradient(transparent, rgba(0, 0, 0, 0.32));
             pointer-events: none;
         }
         .product-image {
+            display: block;
             width: 100%;
             height: 100%;
             object-fit: cover;
             object-position: center;
-            transition: transform 450ms ease;
+            transition: transform 450ms ease, filter 450ms ease;
         }
         .product-card:hover .product-image {
             transform: scale(1.045);
+            filter: saturate(1.08);
+        }
+        @media (max-width: 380px) {
+            .product-image-frame {
+                height: 10.5rem;
+            }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                scroll-behavior: auto !important;
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+        button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+            outline: 2px solid #e7c66f;
+            outline-offset: 3px;
         }
         #searchInput {
             background-color: rgba(30, 30, 30, 0.88);
