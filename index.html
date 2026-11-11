@@ -210,7 +210,7 @@
 
     <!-- Search & Filter Nav -->
     <div class="sticky top-0 z-20 bg-brand-dark/90 backdrop-blur-md px-4 py-3 border-b border-gray-800">
-        <div class="max-w-md mx-auto space-y-3">
+        <div class="max-w-6xl mx-auto space-y-3">
             <!-- Search Input -->
             <div class="relative">
                 <i class="fas fa-search absolute left-3.5 top-3 text-gray-400 text-sm"></i>
@@ -231,7 +231,7 @@
     </div>
 
     <!-- Main Content Menu -->
-    <main class="max-w-md mx-auto px-4 mt-6 space-y-8" id="menuContainer">
+    <main class="max-w-6xl mx-auto px-4 md:px-6 mt-8 space-y-10" id="menuContainer">
         <!-- Menu sections dynamically injected -->
     </main>
 
@@ -387,7 +387,7 @@
                 </button>
             </div>
             <div id="adminSetupNotice" class="hidden p-4 text-sm text-amber-200">
-                <p>Firebase is not configured yet. Add your new Firebase web app config, enable Email/Password sign-in, and create an administrator account to enable product management.</p>
+                <p>Supabase admin access is not configured yet. Create an admin account and add its email to the Namira admins allowlist.</p>
             </div>
             <form id="adminLoginPanel" onsubmit="adminSignIn(event)" class="hidden p-4 overflow-y-auto space-y-4">
                 <p class="text-sm text-gray-300">Sign in with your administrator account to update products in the shared menu.</p>
@@ -402,6 +402,16 @@
                 <p id="adminLoginStatus" role="status" class="text-xs text-red-300 hidden"></p>
                 <button type="submit" class="w-full bg-amber-500 hover:bg-amber-600 text-black font-bold py-3 rounded-xl">Sign In</button>
             </form>
+            <section id="adminOrdersPanel" class="hidden p-4 border-b border-gray-800 space-y-3">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-sm font-bold text-amber-300">Recent Orders</h3>
+                        <p class="text-[11px] text-gray-500">Orders saved securely in your Namira database</p>
+                    </div>
+                    <button type="button" onclick="loadAdminOrders()" class="text-xs text-amber-300 border border-amber-500/30 rounded-lg px-3 py-2">Refresh</button>
+                </div>
+                <div id="adminOrdersList" class="space-y-2 max-h-64 overflow-y-auto"></div>
+            </section>
             <form id="adminProductForm" onsubmit="saveProductDetails(event)" class="p-4 overflow-y-auto space-y-4">
                 <div id="adminCloudControls" class="hidden rounded-xl border border-green-500/20 bg-green-500/10 p-3 flex items-center justify-between gap-3">
                     <p id="adminCloudStatus" class="text-xs text-green-300"></p>
@@ -438,28 +448,15 @@
         </div>
     </div>
 
-    <!-- Firebase: shared cloud menu and protected admin sign-in -->
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-
-    <!-- JavaScript Data and App Logic -->
+    <!-- Supabase: shared menu, secure admin access and order storage -->
     <script>
-        // Replace these values with the web app config from your Firebase project.
-        const firebaseConfig = {
-            apiKey: "YOUR_API_KEY",
-            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-            projectId: "YOUR_PROJECT_ID",
-            appId: "YOUR_APP_ID"
-        };
-        const cloudConfigured = !Object.values(firebaseConfig).some(value => value.includes('YOUR_'));
-        // Show the admin entry only when the URL contains an /admin path or ?admin marker.
+        const SUPABASE_URL = "https://fraeuxdnbjwxebxrfeeu.supabase.co";
+        const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_tppuG96V7nmXD6X-GD9cZQ_c6";
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+        const cloudConfigured = Boolean(supabaseClient);
         const isAdminHost = /(?:^|[/?#&])admin(?:[/?#=&]|$)/i.test(window.location.href);
-        let firebaseAuth = null;
-        let productsDb = null;
         let adminUser = null;
-        let unsubscribeProducts = null;
-
+        let adminImageData = null;
         // Menu Data constructed accurately with high quality professional imagery
         const menuData = [
             {
@@ -594,16 +591,46 @@
         let activeCategory = "All";
         let adminImageData = null;
 
-        function initializeCloudSync() {
-            if (!cloudConfigured || !window.firebase) return;
-            firebase.initializeApp(firebaseConfig);
-            firebaseAuth = firebase.auth();
-            productsDb = firebase.firestore();
-            firebaseAuth.onAuthStateChanged(user => {
-                adminUser = user;
+        async function initializeCloudSync() {
+            if (!cloudConfigured) return;
+            const authResult = await supabaseClient.auth.getSession();
+            adminUser = authResult.data && authResult.data.session ? authResult.data.session.user : null;
+            updateAdminAccess();
+            supabaseClient.auth.onAuthStateChange(function(_event, session) {
+                adminUser = session ? session.user : null;
                 updateAdminAccess();
+                if (adminUser) loadAdminOrders();
             });
-            subscribeToCloudProducts();
+            await loadCloudProducts();
+        }
+
+        async function loadCloudProducts() {
+            const result = await supabaseClient.from('products')
+                .select('id,category,category_icon,name,description,price,image_url,is_active,sort_order')
+                .eq('is_active', true).order('sort_order', { ascending: true });
+            if (result.error) {
+                console.warn('Supabase menu load failed.', result.error);
+                return;
+            }
+            if (!result.data || !result.data.length) return;
+            const grouped = [];
+            result.data.forEach(function(row) {
+                let group = grouped.find(function(entry) { return entry.category === row.category; });
+                if (!group) {
+                    group = { category: row.category, icon: row.category_icon || 'fa-utensils', items: [] };
+                    grouped.push(group);
+                }
+                group.items.push({
+                    id: Number(row.id),
+                    name: row.name,
+                    desc: row.description || '',
+                    price: Number(row.price),
+                    image: row.image_url || ''
+                });
+            });
+            menuData.splice(0, menuData.length, ...grouped);
+            renderCategoryPills();
+            renderMenu();
         }
 
         function updateAdminAccess() {
@@ -611,70 +638,91 @@
             const productForm = document.getElementById('adminProductForm');
             const cloudControls = document.getElementById('adminCloudControls');
             const setupNotice = document.getElementById('adminSetupNotice');
+            const ordersPanel = document.getElementById('adminOrdersPanel');
             document.getElementById('adminPanelButton').classList.toggle('hidden', !isAdminHost);
             if (!isAdminHost) {
                 loginPanel.classList.add('hidden');
                 productForm.classList.add('hidden');
                 cloudControls.classList.add('hidden');
+                if (ordersPanel) ordersPanel.classList.add('hidden');
                 document.getElementById('adminModal').classList.add('hidden');
-                return;
-            }
-            if (!cloudConfigured) {
-                setupNotice.textContent = 'Firebase is not configured. You can still edit products here; changes will be saved only in this browser and will not appear for other customers.';
-                setupNotice.classList.remove('hidden');
-                loginPanel.classList.add('hidden');
-                productForm.classList.remove('hidden');
-                cloudControls.classList.add('hidden');
                 return;
             }
             setupNotice.classList.add('hidden');
             loginPanel.classList.toggle('hidden', Boolean(adminUser));
             productForm.classList.toggle('hidden', !adminUser);
             cloudControls.classList.toggle('hidden', !adminUser);
+            if (ordersPanel) ordersPanel.classList.toggle('hidden', !adminUser);
             if (adminUser) {
-                document.getElementById('adminCloudStatus').textContent = `Cloud connected · ${adminUser.email}`;
+                document.getElementById('adminCloudStatus').textContent = 'Supabase connected · ' + (adminUser.email || 'Admin');
+                loadAdminOrders();
             }
         }
 
         async function adminSignIn(event) {
             event.preventDefault();
-            if (!isAdminHost || !firebaseAuth) return;
+            if (!isAdminHost) return;
             const status = document.getElementById('adminLoginStatus');
             status.classList.add('hidden');
-            try {
-                await firebaseAuth.signInWithEmailAndPassword(
-                    document.getElementById('adminEmail').value.trim(),
-                    document.getElementById('adminPassword').value
-                );
-                document.getElementById('adminPassword').value = '';
-            } catch (error) {
-                status.textContent = 'Sign-in failed. Check your email and password.';
+            const result = await supabaseClient.auth.signInWithPassword({
+                email: document.getElementById('adminEmail').value.trim(),
+                password: document.getElementById('adminPassword').value
+            });
+            if (result.error) {
+                status.textContent = 'Sign-in failed. Check your email, password and admin authorization.';
                 status.classList.remove('hidden');
+                return;
             }
+            document.getElementById('adminPassword').value = '';
         }
 
         async function adminSignOut() {
-            if (firebaseAuth) await firebaseAuth.signOut();
+            await supabaseClient.auth.signOut();
         }
 
-        function subscribeToCloudProducts() {
-            if (unsubscribeProducts) unsubscribeProducts();
-            unsubscribeProducts = productsDb.collection('products').onSnapshot(snapshot => {
-                snapshot.forEach(document => {
-                    const saved = document.data();
-                    const id = Number(document.id);
-                    for (const category of menuData) {
-                        const item = category.items.find(product => product.id === id);
-                        if (!item) continue;
-                        if (typeof saved.name === 'string') item.name = saved.name;
-                        if (typeof saved.desc === 'string') item.desc = saved.desc;
-                        if (Number.isFinite(saved.price)) item.price = saved.price;
-                        if (typeof saved.image === 'string') item.image = saved.image;
-                    }
-                });
-                renderCategoryPills();
-                renderMenu();
-            }, error => console.warn('Cloud menu sync failed.', error));
+        async function loadAdminOrders() {
+            if (!adminUser || !isAdminHost) return;
+            const host = document.getElementById('adminOrdersList');
+            if (!host) return;
+            host.innerHTML = '<p class="text-xs text-gray-400">Loading recent orders…</p>';
+            const result = await supabaseClient.from('orders')
+                .select('id,order_number,customer_name,customer_phone,delivery_address,payment_method,notes,items,total,status,created_at')
+                .order('created_at', { ascending: false }).limit(25);
+            if (result.error) {
+                host.innerHTML = '<p class="text-xs text-red-300">Could not load orders. Please refresh.</p>';
+                return;
+            }
+            if (!result.data || !result.data.length) {
+                host.innerHTML = '<p class="text-xs text-gray-400">No customer orders received yet.</p>';
+                return;
+            }
+            host.innerHTML = result.data.map(function(order) {
+                const itemLines = (order.items || []).map(function(item) {
+                    return '<li>' + escapeHTML(item.quantity + ' × ' + item.name) + '</li>';
+                }).join('');
+                const dateText = new Date(order.created_at).toLocaleString();
+                return '<article class="rounded-xl border border-amber-500/20 bg-black/30 p-3 space-y-2">' +
+                    '<div class="flex justify-between gap-3"><strong class="text-amber-300 text-sm">Order #' + order.order_number + '</strong><span class="text-[10px] text-gray-400">' + escapeHTML(dateText) + '</span></div>' +
+                    '<p class="text-xs text-white">' + escapeHTML(order.customer_name) + ' · ' + escapeHTML(order.customer_phone) + '</p>' +
+                    '<p class="text-xs text-gray-400">' + escapeHTML(order.delivery_address) + '</p>' +
+                    '<ul class="text-xs text-gray-300 list-disc pl-4">' + itemLines + '</ul>' +
+                    '<div class="flex justify-between items-center gap-2"><strong class="text-amber-300">Rs ' + Number(order.total).toLocaleString() + '</strong>' +
+                    '<select aria-label="Order status" onchange="updateOrderStatus(\'' + order.id + '\', this.value)" class="bg-gray-900 border border-gray-700 rounded-lg px-2 py-1 text-xs text-white">' +
+                    ['new','confirmed','preparing','out_for_delivery','completed','cancelled'].map(function(status) {
+                        return '<option value="' + status + '"' + (order.status === status ? ' selected' : '') + '>' + status.replaceAll('_',' ') + '</option>';
+                    }).join('') + '</select></div>' +
+                    (order.notes ? '<p class="text-xs text-gray-400">Note: ' + escapeHTML(order.notes) + '</p>' : '') +
+                    '</article>';
+            }).join('');
+        }
+
+        async function updateOrderStatus(orderId, status) {
+            const result = await supabaseClient.from('orders').update({ status: status }).eq('id', orderId);
+            if (result.error) {
+                alert('Order status could not be updated.');
+                return;
+            }
+            loadAdminOrders();
         }
 
         function escapeHTML(value) {
@@ -683,31 +731,13 @@
             })[character]);
         }
 
-        // Initialize App
-        window.onload = function() {
-            loadSavedProducts();
+        // Initialize app and load the shared Supabase menu.
+        window.onload = async function() {
             renderCategoryPills();
             renderMenu();
-            initializeCloudSync();
+            await initializeCloudSync();
             updateAdminAccess();
         };
-
-        function loadSavedProducts() {
-            try {
-                const savedProducts = JSON.parse(localStorage.getItem('namiraKitchenProducts') || '{}');
-                menuData.forEach(category => category.items.forEach(item => {
-                    const saved = savedProducts[item.id];
-                    if (saved) {
-                        if (typeof saved.name === 'string') item.name = saved.name;
-                        if (typeof saved.desc === 'string') item.desc = saved.desc;
-                        if (Number.isFinite(saved.price)) item.price = saved.price;
-                        if (typeof saved.image === 'string') item.image = saved.image;
-                    }
-                }));
-            } catch (error) {
-                console.warn('Could not load saved product details.', error);
-            }
-        }
 
         function openAdminPanel() {
             if (!isAdminHost) return;
@@ -791,10 +821,9 @@
 
         async function saveProductDetails(event) {
             event.preventDefault();
-            if (!isAdminHost) return;
+            if (!isAdminHost || !adminUser) return;
             const item = getAdminSelectedProduct();
             if (!item) return;
-
             const name = document.getElementById('adminProductName').value.trim();
             const desc = document.getElementById('adminProductDescription').value.trim();
             const price = Number(document.getElementById('adminProductPrice').value);
@@ -804,35 +833,46 @@
                 status.classList.remove('hidden');
                 return;
             }
-            const updatedProduct = { name, desc, price };
-            if (adminImageData) updatedProduct.image = adminImageData;
-
-            if (cloudConfigured && productsDb && adminUser) {
+            let imageUrl = item.image || '';
+            if (adminImageData) {
                 try {
-                    await productsDb.collection('products').doc(String(item.id)).set(updatedProduct, { merge: true });
+                    const blob = await (await fetch(adminImageData)).blob();
+                    const filePath = 'products/' + item.id + '-' + Date.now() + '.jpg';
+                    const upload = await supabaseClient.storage.from('product-images').upload(filePath, blob, {
+                        contentType: 'image/jpeg', upsert: true
+                    });
+                    if (upload.error) throw upload.error;
+                    imageUrl = supabaseClient.storage.from('product-images').getPublicUrl(filePath).data.publicUrl;
                 } catch (error) {
-                    status.textContent = 'Could not save to the cloud. Check your connection and image size.';
-                    status.classList.remove('hidden');
-                    return;
-                }
-            } else {
-                try {
-                    const savedProducts = JSON.parse(localStorage.getItem('namiraKitchenProducts') || '{}');
-                    savedProducts[item.id] = { ...savedProducts[item.id], ...updatedProduct };
-                    localStorage.setItem('namiraKitchenProducts', JSON.stringify(savedProducts));
-                } catch (error) {
-                    status.textContent = 'Could not save in this browser. The selected image may be too large.';
+                    status.textContent = 'Image upload failed. Please try a smaller image and retry.';
                     status.classList.remove('hidden');
                     return;
                 }
             }
-
-            Object.assign(item, updatedProduct);
+            const category = menuData.find(function(group) {
+                return group.items.some(function(product) { return product.id === item.id; });
+            });
+            const payload = {
+                id: item.id,
+                category: category ? category.category : 'Menu',
+                category_icon: category ? category.icon : 'fa-utensils',
+                name: name,
+                description: desc,
+                price: price,
+                image_url: imageUrl,
+                is_active: true,
+                sort_order: item.id
+            };
+            const result = await supabaseClient.from('products').upsert(payload, { onConflict: 'id' });
+            if (result.error) {
+                status.textContent = 'Could not save to Supabase. Please check admin access and try again.';
+                status.classList.remove('hidden');
+                return;
+            }
+            Object.assign(item, { name: name, desc: desc, price: price, image: imageUrl });
             renderMenu();
             renderCategoryPills();
-            status.textContent = cloudConfigured && productsDb && adminUser
-                ? 'Product saved. Customers will see the shared menu.'
-                : 'Product saved in this browser only. It will not sync to other devices.';
+            status.textContent = 'Saved to Supabase. The shared menu is updated for customers.';
             status.classList.remove('hidden');
             adminImageData = null;
         }
@@ -1080,50 +1120,70 @@
             document.getElementById('checkoutModal').classList.add('hidden');
         }
 
-        // WhatsApp Order Submission
-        function handleOrderSubmit(e) {
+        // Save each order in Supabase, then open WhatsApp with the order summary.
+        async function handleOrderSubmit(e) {
             e.preventDefault();
-
             const name = document.getElementById('custName').value.trim();
             const phone = document.getElementById('custPhone').value.trim();
             const address = document.getElementById('custAddress').value.trim();
             const payment = document.getElementById('custPayment').value;
             const notes = document.getElementById('custNotes').value.trim();
-
-            let total = 0;
-            let itemsSummary = '';
-
-            Object.values(cart).forEach(item => {
-                const subtotal = item.qty * item.price;
-                total += subtotal;
-                itemsSummary += `• ${item.qty}x ${item.name} - RS ${subtotal}\n`;
-            });
-
-            // Construct WhatsApp Message Text
-            let message = `*NEW ORDER - NAMIRA'S KITCHEN*\n`;
-            message += `------------------------------------\n`;
-            message += `*Customer Details:*\n`;
-            message += `👤 *Name:* ${name}\n`;
-            message += `📞 *Phone:* ${phone}\n`;
-            message += `📍 *Address:* ${address}\n`;
-            message += `💳 *Payment:* ${payment}\n`;
-            if (notes) {
-                message += `📝 *Notes:* ${notes}\n`;
+            const cartItems = Object.values(cart);
+            if (!cartItems.length) {
+                alert('Your cart is empty.');
+                return;
             }
-            message += `------------------------------------\n`;
-            message += `*Order Items:*\n${itemsSummary}`;
-            message += `------------------------------------\n`;
-            message += `💰 *TOTAL AMOUNT:* RS ${total}\n`;
-            message += `------------------------------------\n`;
-            message += `Please confirm my order. Thank you!`;
-
-            // Phone number from menu image: +923178022814
-            const targetWhatsApp = "923178022814";
-            const encodedMessage = encodeURIComponent(message);
-            const whatsappURL = `https://api.whatsapp.com/send?phone=${targetWhatsApp}&text=${encodedMessage}`;
-
-            // Redirect to WhatsApp
-            window.open(whatsappURL, '_blank');
+            const total = cartItems.reduce(function(sum, item) { return sum + item.qty * item.price; }, 0);
+            const orderItems = cartItems.map(function(item) {
+                return {
+                    product_id: item.id,
+                    name: item.name,
+                    unit_price: item.price,
+                    quantity: item.qty,
+                    line_total: item.qty * item.price
+                };
+            });
+            const submitButton = document.querySelector('#customerForm button[type="submit"]');
+            submitButton.disabled = true;
+            submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Saving order…</span>';
+            const savedOrder = await supabaseClient.from('orders').insert({
+                customer_name: name,
+                customer_phone: phone,
+                delivery_address: address,
+                payment_method: payment,
+                notes: notes,
+                items: orderItems,
+                total: total
+            }).select('order_number').single();
+            submitButton.disabled = false;
+            submitButton.innerHTML = '<i class="fab fa-whatsapp text-xl"></i><span>Send Order via WhatsApp</span>';
+            if (savedOrder.error) {
+                alert('Order could not be saved. Please check your internet connection and try again. Your WhatsApp message has not been opened.');
+                console.error('Order save failed:', savedOrder.error);
+                return;
+            }
+            let itemsSummary = '';
+            orderItems.forEach(function(item) {
+                itemsSummary += '• ' + item.quantity + 'x ' + item.name + ' - RS ' + item.line_total + '\\n';
+            });
+            let message = '*NEW ORDER - NAMIRA\'S KITCHEN*\\n';
+            message += '*Order Number: #' + savedOrder.data.order_number + '*\\n';
+            message += '------------------------------------\\n';
+            message += '*Customer Details:*\\n';
+            message += '👤 *Name:* ' + name + '\\n';
+            message += '📞 *Phone:* ' + phone + '\\n';
+            message += '📍 *Address:* ' + address + '\\n';
+            message += '💳 *Payment:* ' + payment + '\\n';
+            if (notes) message += '📝 *Notes:* ' + notes + '\\n';
+            message += '------------------------------------\\n';
+            message += '*Order Items:*\\n' + itemsSummary;
+            message += '------------------------------------\\n';
+            message += '💰 *TOTAL AMOUNT:* RS ' + total + '\\n';
+            message += '------------------------------------\\n';
+            message += 'Please confirm my order. Thank you!';
+            const targetWhatsApp = '923178022814';
+            const whatsappURL = 'https://api.whatsapp.com/send?phone=' + targetWhatsApp + '&text=' + encodeURIComponent(message);
+            window.open(whatsappURL, '_blank', 'noopener');
         }
     </script>
 </body>
