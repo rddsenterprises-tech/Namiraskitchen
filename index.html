@@ -165,6 +165,32 @@
             -ms-overflow-style: none;
             scrollbar-width: none;
         }
+    
+        /* Premium responsive menu polish */
+        html { scroll-behavior: smooth; }
+        header.hero-header { min-height: 430px; }
+        .hero-logo { box-shadow: 0 14px 45px rgba(211,176,92,.22); }
+        .product-card {
+            border-radius: 1.35rem;
+            background: linear-gradient(155deg, rgba(31,29,23,.98), rgba(10,10,9,.98));
+            box-shadow: 0 18px 42px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.035);
+        }
+        .product-image-frame { height: 15rem; }
+        .product-image { filter: saturate(.94) contrast(1.04); }
+        .menu-section-title { padding-bottom: .85rem; }
+        #searchInput { border-radius: 1rem; padding-top: .9rem; padding-bottom: .9rem; }
+        #categoryPills button { padding: .65rem 1.1rem; border-radius: 999px; }
+        #cartBar { box-shadow: 0 18px 55px rgba(0,0,0,.55); }
+        @media (min-width: 768px) {
+            header.hero-header { min-height: 470px; }
+            .product-image-frame { height: 17rem; }
+            #menuContainer { padding-bottom: 3rem; }
+        }
+        @media (max-width: 480px) {
+            header.hero-header { min-height: 390px; }
+            .product-image-frame { height: 13rem; }
+        }
+
     </style>
 </head>
 <body class="pb-24">
