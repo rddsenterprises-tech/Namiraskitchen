@@ -448,6 +448,7 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <!-- Supabase: shared menu, secure admin access and order storage -->
     <script>
         const SUPABASE_URL = "https://fraeuxdnbjwxebxrfeeu.supabase.co";
@@ -589,7 +590,7 @@
         // State
         let cart = {};
         let activeCategory = "All";
-        let adminImageData = null;
+        
 
         async function initializeCloudSync() {
             if (!cloudConfigured) return;
@@ -1164,22 +1165,22 @@
             }
             let itemsSummary = '';
             orderItems.forEach(function(item) {
-                itemsSummary += '• ' + item.quantity + 'x ' + item.name + ' - RS ' + item.line_total + '\\n';
+                itemsSummary += '• ' + item.quantity + 'x ' + item.name + ' - RS ' + item.line_total + '\n';
             });
-            let message = '*NEW ORDER - NAMIRA\'S KITCHEN*\\n';
-            message += '*Order Number: #' + savedOrder.data.order_number + '*\\n';
-            message += '------------------------------------\\n';
-            message += '*Customer Details:*\\n';
-            message += '👤 *Name:* ' + name + '\\n';
-            message += '📞 *Phone:* ' + phone + '\\n';
-            message += '📍 *Address:* ' + address + '\\n';
-            message += '💳 *Payment:* ' + payment + '\\n';
-            if (notes) message += '📝 *Notes:* ' + notes + '\\n';
-            message += '------------------------------------\\n';
-            message += '*Order Items:*\\n' + itemsSummary;
-            message += '------------------------------------\\n';
-            message += '💰 *TOTAL AMOUNT:* RS ' + total + '\\n';
-            message += '------------------------------------\\n';
+            let message = '*NEW ORDER - NAMIRA\'S KITCHEN*\n';
+            message += '*Order Number: #' + savedOrder.data.order_number + '*\n';
+            message += '------------------------------------\n';
+            message += '*Customer Details:*\n';
+            message += '👤 *Name:* ' + name + '\n';
+            message += '📞 *Phone:* ' + phone + '\n';
+            message += '📍 *Address:* ' + address + '\n';
+            message += '💳 *Payment:* ' + payment + '\n';
+            if (notes) message += '📝 *Notes:* ' + notes + '\n';
+            message += '------------------------------------\n';
+            message += '*Order Items:*\n' + itemsSummary;
+            message += '------------------------------------\n';
+            message += '💰 *TOTAL AMOUNT:* RS ' + total + '\n';
+            message += '------------------------------------\n';
             message += 'Please confirm my order. Thank you!';
             const targetWhatsApp = '923178022814';
             const whatsappURL = 'https://api.whatsapp.com/send?phone=' + targetWhatsApp + '&text=' + encodeURIComponent(message);
